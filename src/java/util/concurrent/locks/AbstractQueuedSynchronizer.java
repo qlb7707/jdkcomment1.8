@@ -582,12 +582,18 @@ public abstract class AbstractQueuedSynchronizer
      */
     private Node enq(final Node node) {
         for (;;) {
+            //获取当前尾部
             Node t = tail;
+            //判断当前尾部是否为空
             if (t == null) { // Must initialize
+                //如果是空， 新建一个空的node，头部尾部都指向它， 继续循环
+                //为何这里要创建一个空的node？？？
                 if (compareAndSetHead(new Node()))
                     tail = head;
             } else {
+                //如果不为空， 当前node前一个指向尾部
                 node.prev = t;
+                //做CAS， 把尾部设成当前node，成功返回，失败继续循环
                 if (compareAndSetTail(t, node)) {
                     t.next = node;
                     return t;
@@ -602,17 +608,28 @@ public abstract class AbstractQueuedSynchronizer
      * @param mode Node.EXCLUSIVE for exclusive, Node.SHARED for shared
      * @return the new node
      */
+    //新建node， 并且加入队列
     private Node addWaiter(Node mode) {
+        //新建一个node
         Node node = new Node(Thread.currentThread(), mode);
         // Try the fast path of enq; backup to full enq on failure
+        //获取尾部node
         Node pred = tail;
+        //判断尾部是否为空
         if (pred != null) {
+            //如果不为空，把当前node的前一个设置成当前尾部
+            //这里是否会发生pred不等于当前尾部？
             node.prev = pred;
+            //CAS， 把node设成尾部， 如果pred等于当前尾部时，操作成功
             if (compareAndSetTail(pred, node)) {
+                //CAS成功以后，把原来的尾部的next设为当前node
                 pred.next = node;
+                //返回当前node
                 return node;
             }
         }
+        //1. 当前尾部为null
+        //2. CAS失败， 循环操作，直到成功
         enq(node);
         return node;
     }
@@ -799,12 +816,14 @@ public abstract class AbstractQueuedSynchronizer
              * This node has already set status asking a release
              * to signal it, so it can safely park.
              */
+            //如果是SIGNAL状态，返回true
             return true;
         if (ws > 0) {
             /*
              * Predecessor was cancelled. Skip over predecessors and
              * indicate retry.
              */
+            //prev node被cancel，直接向前跳过所有被cancel的node
             do {
                 node.prev = pred = pred.prev;
             } while (pred.waitStatus > 0);
@@ -815,6 +834,7 @@ public abstract class AbstractQueuedSynchronizer
              * need a signal, but don't park yet.  Caller will need to
              * retry to make sure it cannot acquire before parking.
              */
+            //改变pred node的waitStatus，设置成SIGNAL
             compareAndSetWaitStatus(pred, ws, Node.SIGNAL);
         }
         return false;
@@ -859,13 +879,22 @@ public abstract class AbstractQueuedSynchronizer
         try {
             boolean interrupted = false;
             for (;;) {
+                //获取当前node的前一个node
                 final Node p = node.predecessor();
+                //判断 p 是否为头部，
+                //如果p为头部，是一个空的node， 所以此时并没有人排排在它后面：1.队列里没有其他node， 2.队列里其他node都排在它后面
+                //这个时候再次调用tryAcquire 标记为（2）， 尝试获取锁
                 if (p == head && tryAcquire(arg)) {
+                    //如果成获取，把头部设为当前node
                     setHead(node);
                     p.next = null; // help GC
                     failed = false;
                     return interrupted;
                 }
+                //1. p不是头部
+                //2. 尝试获取失败，可能有人获取到锁
+                //判断是否需要block, 如果需要block， 那么就park
+                //如果parkAndCheckInterrupt()返回true， 那么interrupted设为true
                 if (shouldParkAfterFailedAcquire(p, node) &&
                     parkAndCheckInterrupt())
                     interrupted = true;
@@ -1195,6 +1224,9 @@ public abstract class AbstractQueuedSynchronizer
      *        can represent anything you like.
      */
     public final void acquire(int arg) {
+        //第一次调用tryAcquire，标记为（1）
+        //如果tryAcquire返回true， 那么直接返回，
+        //如果tryAcquire返回false， 那么排队
         if (!tryAcquire(arg) &&
             acquireQueued(addWaiter(Node.EXCLUSIVE), arg))
             selfInterrupt();
@@ -1516,6 +1548,12 @@ public abstract class AbstractQueuedSynchronizer
         Node t = tail; // Read fields in reverse initialization order
         Node h = head;
         Node s;
+        /**
+         * tryAcquire (1) h == t == null, 直接返回false，不需要排队
+         * tryAcquire（2） h == t, 这个时候只剩一个空node， 不需要排队
+         *                h != t, 说明有人在排队， h.next == null ??
+         *                h != t, s != null, s.thread != currentThread, 说明前面有人在排队，并且不是自己，那么自己要排队
+         */
         return h != t &&
             ((s = h.next) == null || s.thread != Thread.currentThread());
     }

@@ -229,19 +229,33 @@ public class ReentrantLock implements Lock, java.io.Serializable {
          * recursive call or no waiters or is first.
          */
         protected final boolean tryAcquire(int acquires) {
+            //获取当前线程
             final Thread current = Thread.currentThread();
+            //获取锁的状态
             int c = getState();
             if (c == 0) {
+                /**状态为0，没有被持有， 那么先判断是否需要排队
+                 *问题：1. 会不会有这样的情况，这里c为0， 但是在判断`c == 0 `的时候`getState()`已经不为0，
+                 *     2. 或者c不为0，但是在判断`c == 0 `的时候`getState()`已经变成0了
+                 */
                 if (!hasQueuedPredecessors() &&
+                        //如果不需要排队， 那么做CAS
                     compareAndSetState(0, acquires)) {
+                    //如果CAS成功了， 那么把锁的持有者设为当前线程， 返回true， 否则返回false
+                    //问题1的情况下， CAS 失败，整个方法返回false
                     setExclusiveOwnerThread(current);
                     return true;
                 }
             }
+            // c 不为 0， 说明锁被线程持有
+            // 问题1的情况下，CAS失败， 当前锁的持有者必然不会是当前线程，因为在同一个线程里，不存在并发
             else if (current == getExclusiveOwnerThread()) {
+                //如果锁的持有者为当前线程， 那么计数器加1， 返回true
+                //这里实现了锁的可重入
                 int nextc = c + acquires;
                 if (nextc < 0)
                     throw new Error("Maximum lock count exceeded");
+                //这里线程已经持有锁了，其他线程不可能改变锁的状态，所以不需要CAS
                 setState(nextc);
                 return true;
             }
@@ -254,6 +268,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
      * This is equivalent to using {@code ReentrantLock(false)}.
      */
     public ReentrantLock() {
+        //默认不公平锁
         sync = new NonfairSync();
     }
 
@@ -264,6 +279,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
      * @param fair {@code true} if this lock should use a fair ordering policy
      */
     public ReentrantLock(boolean fair) {
+        //true:公平锁， false：不公平锁
         sync = fair ? new FairSync() : new NonfairSync();
     }
 
@@ -282,6 +298,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
      * at which time the lock hold count is set to one.
      */
     public void lock() {
+        //调用sync（可能是公平锁，也肯是不公平锁）的lock方法
         sync.lock();
     }
 
