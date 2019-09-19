@@ -642,6 +642,9 @@ public abstract class AbstractQueuedSynchronizer
      * @param node the node
      */
     private void setHead(Node node) {
+        //设置head为当前node
+        //thread设置为空， why？？， 因为调用的地方（acquireQueued里面）当前线程已经获取到锁了，所以这个node其实已经不需要排在队列中了
+        //prev设置为空
         head = node;
         node.thread = null;
         node.prev = null;
@@ -659,6 +662,8 @@ public abstract class AbstractQueuedSynchronizer
          * fails or if status is changed by waiting thread.
          */
         int ws = node.waitStatus;
+        //判断waitStatus是否 < 0， 如果是，那么把它改成0
+        //因为已经把state改成0了，所以其他线程可能会同时改这个值，CAS可能会失败
         if (ws < 0)
             compareAndSetWaitStatus(node, ws, 0);
 
@@ -668,13 +673,17 @@ public abstract class AbstractQueuedSynchronizer
          * traverse backwards from tail to find the actual
          * non-cancelled successor.
          */
+        //拿到队列的第一个node
         Node s = node.next;
         if (s == null || s.waitStatus > 0) {
+            //如果s为空， 或者它被cancel
             s = null;
+            //从后往前找到最前面一个waitStatus <= 0 的node
             for (Node t = tail; t != null && t != node; t = t.prev)
                 if (t.waitStatus <= 0)
                     s = t;
         }
+        //唤醒线程
         if (s != null)
             LockSupport.unpark(s.thread);
     }
@@ -878,14 +887,15 @@ public abstract class AbstractQueuedSynchronizer
         boolean failed = true;
         try {
             boolean interrupted = false;
+            //自旋， park
             for (;;) {
                 //获取当前node的前一个node
                 final Node p = node.predecessor();
                 //判断 p 是否为头部，
-                //如果p为头部，是一个空的node， 所以此时并没有人排排在它后面：1.队列里没有其他node， 2.队列里其他node都排在它后面
+                //如果p为头部，是一个空的node， 所以此时并没有人排在它后面：1.队列里没有其他node， 2.队列里其他node都排在它后面
                 //这个时候再次调用tryAcquire 标记为（2）， 尝试获取锁
                 if (p == head && tryAcquire(arg)) {
-                    //如果成获取，把头部设为当前node
+                    //如果成获取，把头部设为当前node， 实际作用相当于当前node出队列
                     setHead(node);
                     p.next = null; // help GC
                     failed = false;
@@ -893,11 +903,12 @@ public abstract class AbstractQueuedSynchronizer
                 }
                 //1. p不是头部
                 //2. 尝试获取失败，可能有人获取到锁
-                //判断是否需要block, 如果需要block， 那么就park
+                //判断是否需要block, 如果需要block（prev 已经signal状态）， 那么就park
                 //如果parkAndCheckInterrupt()返回true， 那么interrupted设为true
                 if (shouldParkAfterFailedAcquire(p, node) &&
                     parkAndCheckInterrupt())
                     interrupted = true;
+                //循环继续
             }
         } finally {
             if (failed)
@@ -1228,7 +1239,9 @@ public abstract class AbstractQueuedSynchronizer
         //如果tryAcquire返回true， 那么直接返回，
         //如果tryAcquire返回false， 那么排队
         if (!tryAcquire(arg) &&
+                //在里面子旋或者阻塞， 直到被interrupt或者unpark
             acquireQueued(addWaiter(Node.EXCLUSIVE), arg))
+            //如果被interrupt了， 那么自己interrupt，为何需要自己中断自己？？？
             selfInterrupt();
     }
 
@@ -1291,7 +1304,9 @@ public abstract class AbstractQueuedSynchronizer
      */
     public final boolean release(int arg) {
         if (tryRelease(arg)) {
+            //tryRelease返回true，释放锁， 这个方法返回true
             Node h = head;
+            //如果队列头部非空 waitStatus != 0， 唤醒h的下一个线程
             if (h != null && h.waitStatus != 0)
                 unparkSuccessor(h);
             return true;
