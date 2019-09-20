@@ -662,8 +662,14 @@ public abstract class AbstractQueuedSynchronizer
          * fails or if status is changed by waiting thread.
          */
         int ws = node.waitStatus;
-        //判断waitStatus是否 < 0， 如果是，那么把它改成0
-        //因为已经把state改成0了，所以其他线程可能会同时改这个值，CAS可能会失败
+        //判断waitStatus是否 < 0， 如果是，那么把它改回0
+        //因为已经把state改成0了，所以其他线程可能会同时改这个值，CAS可能会失败 ???,
+        // 1. ws = -1 waitStatus = -1 成功
+        // 2. ws = -1 waitStatus = 0  失败 别的线程也同时也在执行这个方法，并且该线程是node的后继者，
+        //      只有后继者才能修改前一个node的waitStatus，如果这个后继者已经park，而此时后继者还没有被唤醒，所以不可能修改这个状态，
+        //      所以这个后继者，修改完状态，没有休眠（还没有park，或者拿到了锁）， 如果它修改完还没有park，那么它会尝试获取锁，这个时候他应该获取不到，
+        //      因为h != t， 他接下来就会park， 所以不可能拿到锁
+        // 3. ws = -1 waitStatus = 1  失败 cancel
         if (ws < 0)
             compareAndSetWaitStatus(node, ws, 0);
 
@@ -685,6 +691,7 @@ public abstract class AbstractQueuedSynchronizer
         }
         //唤醒线程
         if (s != null)
+            //如果该线程还没有park，也就是先unpark再park，那么线程不会阻塞
             LockSupport.unpark(s.thread);
     }
 
@@ -1307,6 +1314,7 @@ public abstract class AbstractQueuedSynchronizer
             //tryRelease返回true，释放锁， 这个方法返回true
             Node h = head;
             //如果队列头部非空 waitStatus != 0， 唤醒h的下一个线程
+            //
             if (h != null && h.waitStatus != 0)
                 unparkSuccessor(h);
             return true;
