@@ -1314,7 +1314,11 @@ public abstract class AbstractQueuedSynchronizer
             //tryRelease返回true，释放锁， 这个方法返回true
             Node h = head;
             //如果队列头部非空 waitStatus != 0， 唤醒h的下一个线程
-            //
+            //如果h.waitStatus == 0， 1. 没有线程进来排队， 不需要唤醒
+            //                       2.线程进来排队了，但是没有阻塞在tryAcquire或者说acquireQueued里面第一次自旋还没有走完
+            //                              tryAcquire  h = t；可以拿到锁，不需要唤醒
+            //                       3.多个线程进来排队了，但是没有阻塞在tryAcquire或者说acquireQueued里面第一次自旋还没有走完
+            //                              其中一个线程能拿到锁，另一个线程在该线程解锁的时候在看是否要唤醒
             if (h != null && h.waitStatus != 0)
                 unparkSuccessor(h);
             return true;
