@@ -1248,7 +1248,9 @@ public abstract class AbstractQueuedSynchronizer
         if (!tryAcquire(arg) &&
                 //在里面子旋或者阻塞， 直到被interrupt或者unpark
             acquireQueued(addWaiter(Node.EXCLUSIVE), arg))
-            //如果被interrupt了， 那么自己interrupt，为何需要自己中断自己？？？
+            //如果被interrupt了， 那么自己interrupt，为何需要自己中断自己？？？，因为这之前已经调用了isInterrupted，返回为true，
+            //如果再次调用isInterrupted，这个时候返回会变成false， 也就是在别的线程里面无法正确判断该线程是否被中断，
+            //所以为了使isInterrupted重新设置成true，这里要再interrupt一次
             selfInterrupt();
     }
 
